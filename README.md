@@ -1,2 +1,2 @@
-# germancredit
-Classification of the Statlog GermanCredit Data
+# Classifying the Statlog German Credit Data
+Classifiying the Statlog German Credit Data with caret in R
