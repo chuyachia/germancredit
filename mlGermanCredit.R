@@ -36,52 +36,53 @@ customM <- function(data, lev = NULL, model = NULL) {
   accu <- mean(data[, "obs"]==data[, "pred"])
   precis <- (sum(data[, "pred"]=="Bad"&data[, "obs"]=="Bad")/sum(data[, "pred"]=="Bad"))
   recall <- (sum(data[, "pred"]=="Bad"&data[, "obs"]=="Bad")/sum(data[, "obs"]=="Bad"))
-  c(WeightedAccuracy=accu_w,Accuracy= accu,Precision= precis,Recall= recall)
+  specific <- (sum(data[, "pred"]=="Good"&data[, "obs"]=="Good")/sum(data[, "obs"]=="Good"))
+  c(WeightedAccuracy=accu_w,Accuracy= accu,Precision= precis,Recall= recall,Specificity = specific)
 }
 
 
 #### Training control ####
 fitControl<- trainControl(
-  method = "cv",
+  method = "repeatedcv",
   number=10,
+  repeats=5,
   summaryFunction=customM)
 
 fitControlUp <- trainControl(
   method = "cv",
   number = 10,
+  repeats=5,
   sampling="up",
   summaryFunction=customM)
 
 #### Train ####
-# 10 rounds, without seed
+# n rounds, without seed
 #seedlist <- floor(runif(10)*1000)
-n =
+n = 5
 for (i in 1:n) {
-#seed <- seedlist[i]
+seed <- seedlist[i]
 #### Split training testing ####
-#set.seed(seed)
-Train_indx <- createDataPartition(GermanCredit$Class,p=.7,list=F)
+set.seed(seed)
+Train_indx <- createDataPartition(GermanCredit$Class,p=.8,list=F)
 Data_train <- cbind(X[Train_indx,],Class=Y[Train_indx])
 Data_blend <- cbind(X[-Train_indx,],Class=Y[-Train_indx])
 
 #### SVM radial  ####
-#set.seed(seed)
-svmgrid <- expand.grid(C=seq(0.1,3,0.2),
-                       sigma=seq(0.01,0.1,0.02))
+set.seed(seed)
 svmradial<-  train(Class ~ ., data = Data_train, 
                    method = "svmRadial",
                    trControl=fitControlUp,
                    preProcess= preproc,
-                   #tuneGrid=svmgrid,
-                   metric="WeightedAccuracy")#,
-                   #class.weights=c("Bad"=5/6,"Good"=1/6))
+                   metric="WeightedAccuracy",
+                   class.weights=c("Bad"=5/6,"Good"=1/6))
+
 #svmradial
 #svmradial$bestTune
 #plot(svmradial)
 #confusionMatrix(data = predict(svmradial,Data_blend), reference = Data_blend$Class)
 
 #### Gradient boosting ####
-#set.seed(seed)
+set.seed(seed)
 xgb<-  train(Class ~ ., data = Data_train, 
                method = "xgbTree",
                preProcess=preproc,
@@ -93,7 +94,7 @@ xgb<-  train(Class ~ ., data = Data_train,
 #confusionMatrix(data = predict(xgb,Data_blend), reference = Data_blend$Class)
 
 #### Elastic net ####
-#set.seed(seed)
+set.seed(seed)
 enetgrid <-  expand.grid(alpha= seq(0.1,1,0.05),
                         lambda=seq(0.01,0.1,0.01))
 
@@ -117,9 +118,8 @@ enet<-  train(Class ~ ., data = Data_train,
 # Performance
 modelList <- list(RadialSVM=svmradial,
                  Xgb1 =xgb,
-                 Enet=enet)
+                 RF=rf)
 resamps<- resamples(modelList)
-
 
 #bwplot(resamps)
 #summary(resamps)
@@ -136,14 +136,13 @@ basemodel <- lapply(modelList,predict,newdata=Data_blend)
 Data_ensem<- do.call(cbind.data.frame, basemodel)
 Data_ensem$Class <- Data_blend$Class
 
-# blending using random forest
+# blending using glm
 set.seed(seed)
 blend<-  train(Class ~ ., data = Data_ensem, 
                     method = "glm",
                     trControl=fitControl)
-blend$results
 
-out <- capture.output(Blended=blend$results)
+out <- capture.output(blend$results)
 cat(paste("Round",i), out, file="result.txt", sep="n", fill=TRUE,append=TRUE)
 print(paste("Round",i,"finished!"))
 }
